@@ -4,6 +4,7 @@ import (
     "github.com/sourcegraph/jsonpath/pkg/jsonpath"
     "github.com/sourcegraph/jsonpath/pkg/jsonpath/config"
     "github.com/stretchr/testify/require"
+    "go.yaml.in/yaml/v4"
     "testing"
 )
 
@@ -103,6 +104,18 @@ func TestParser(t *testing.T) {
             name:    "Regex match with string operand",
             input:   `$[?@ =~ 'a']`,
             invalid: true,
+        },
+        {
+            name:  "Negated function before &&",
+            input: `$[?!search(@.a, 'x') && @.b]`,
+        },
+        {
+            name:  "Negated paren before ||",
+            input: `$[?!(@.a == 1) || @.b]`,
+        },
+        {
+            name:  "Negated existence before &&",
+            input: `$[?!@.a && @.b]`,
         },
         {
             name:    "Regex literal without =~",
@@ -223,3 +236,43 @@ func TestParserPropertyNameExtension(t *testing.T) {
     }
 }
 
+// TestLogicalNotPrecedence checks that a leading ! negates only the next
+// basic expression, as in RFC 9535's grammar, and not the rest of the && / ||
+// chain after it.
+func TestLogicalNotPrecedence(t *testing.T) {
+    var node yaml.Node
+    require.NoError(t, yaml.Unmarshal([]byte(`
+steps:
+  - {id: checkout, name: Checkout, uses: actions/checkout@v4}
+  - {id: setup, uses: pnpm/action-setup@v4, with: {version: 9}}
+  - {id: pnpm-install, name: Install, run: pnpm i, with: {frozen: true}}
+  - {id: check, name: Check licenses, run: ./check}
+  - {id: cache, uses: actions/cache@v4, with: {path: x}}
+`), &node))
+
+    tests := []struct {
+        path     string
+        expected []string
+    }{
+        {`$.steps[?!search(@.id, '^pnpm') && @.name].id`, []string{"checkout", "check"}},
+        {`$.steps[?!search(@.id, 'c') || @.with].id`, []string{"setup", "pnpm-install", "cache"}},
+        {`$.steps[?!(@.id == 'pnpm-install') && @.with].id`, []string{"setup", "cache"}},
+        {`$.steps[?!(@.id == 'checkout') || @.with].id`, []string{"setup", "pnpm-install", "check", "cache"}},
+        {`$.steps[?!@.uses && @.name].id`, []string{"pnpm-install", "check"}},
+        {`$.steps[?!(@.id =~ /^c/) && @.with].id`, []string{"setup", "pnpm-install"}},
+        {`$.steps[?@.with && !(@.id =~ /^c/) || !@.with && @.id == 'check'].id`, []string{"setup", "pnpm-install", "check"}},
+        // Lenient beyond RFC 9535: a negated comparison without parentheses.
+        {`$.steps[?!@.id == 'checkout' && @.name].id`, []string{"pnpm-install", "check"}},
+    }
+    for _, tt := range tests {
+        t.Run(tt.path, func(t *testing.T) {
+            path, err := jsonpath.NewPath(tt.path)
+            require.NoError(t, err)
+            var ids []string
+            for _, r := range path.Query(&node) {
+                ids = append(ids, r.Value)
+            }
+            require.Equal(t, tt.expected, ids)
+        })
+    }
+}

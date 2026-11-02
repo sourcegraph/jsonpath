@@ -30,3 +30,14 @@ This file lists every way `main` differs from upstream v0.8.2. Merging from upst
   - `$.dependencies[?!(@ =~ /^\^/)]` returns `"18.2.0"`; combine with `&&` and `||` like any comparison.
 - Tests: `TestRegexMatchOperator` (`pkg/jsonpath/jsonpath_plus_test.go`, run under the default and Sourcegraph options), regex cases in `TestParser` and `TestTokenizer`. Upstream's `TestTokenizer_categorize` cases that expected `=~ /.../` to be illegal now expect it to tokenize.
 - Upstream: not proposed.
+
+## Bug fixes
+
+### A leading `!` binds only to the next basic expression
+
+Upstream parsed everything after `!` as one `||` expression, so `!search(@.uses, 'actions/') && @.name` meant `!(search(...) && @.name)`. RFC 9535's grammar applies `!` only to the following paren expression or test expression, so it now means `(!search(...)) && @.name`. The same applies to `!(...)` and `!@.x`.
+
+- A negated comparison without parentheses, such as `!@.a == 1`, is invalid in RFC 9535. It is still accepted, as upstream did, and now means `!(@.a == 1)` without swallowing what follows.
+- Code: the `token.NOT` case of `parseBasicExpr` (`pkg/jsonpath/parser.go`).
+- Tests: `TestLogicalNotPrecedence` and the negation cases in `TestParser` (`pkg/jsonpath/parser_test.go`). The compliance suite has no case that combines `!` with `&&` or `||`.
+- Upstream: not proposed.

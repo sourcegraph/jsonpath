@@ -405,18 +405,25 @@ func (p *JSONPath) parseBasicExpr() (*basicExpr, error) {
 
     switch p.tokens[p.current].Token {
     case token.NOT:
+        // logical-not-op binds only to the next basic-expr, so `!a && b`
+        // is `(!a) && b`, not `!(a && b)`.
         p.current++
-        expr, err := p.parseLogicalOrExpr()
+        expr, err := p.parseBasicExpr()
         if err != nil {
             return nil, err
         }
-        // Inspect if the expr is topped by a parenExpr -- if so we can simplify
-        if len(expr.expressions) == 1 && len(expr.expressions[0].expressions) == 1 && expr.expressions[0].expressions[0].parenExpr != nil {
-            child := expr.expressions[0].expressions[0].parenExpr
-            child.not = !child.not
-            return &basicExpr{parenExpr: child}, nil
+        if expr.parenExpr != nil {
+            expr.parenExpr.not = !expr.parenExpr.not
+            return expr, nil
         }
-        return &basicExpr{parenExpr: &parenExpr{not: true, expr: expr}}, nil
+        if expr.testExpr != nil {
+            expr.testExpr.not = !expr.testExpr.not
+            return expr, nil
+        }
+        // RFC 9535 requires parentheses around a negated comparison; keep
+        // accepting `!@.a == 1` as `!(@.a == 1)`.
+        or := &logicalOrExpr{expressions: []*logicalAndExpr{{expressions: []*basicExpr{expr}}}}
+        return &basicExpr{parenExpr: &parenExpr{not: true, expr: or}}, nil
     case token.PAREN_LEFT:
         p.current++
         expr, err := p.parseLogicalOrExpr()
