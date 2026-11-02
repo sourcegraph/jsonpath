@@ -251,6 +251,8 @@ jobs:
   report:
     id: report
     needs: check
+    steps:
+      - id: notify
 `
 	tests := []struct {
 		path     string
@@ -263,6 +265,10 @@ jobs:
 		{`$.jobs.check.steps[?@.with[?@ == 'package.json'] && @index == 1]`, []string{"setup"}},
 		{`$.jobs.check.steps[?@.with[?@ == 'package.json'] && @parentProperty == 'steps']`, []string{"setup"}},
 		{`$.jobs.check.steps[?@.with[?@ == 'package.json'] && length(@parent) == 3]`, []string{"setup"}},
+		// Each node in the nodelist a filter runs on has its own @parentProperty and @path.
+		{`$.jobs.*.steps[?@parentProperty == 'steps']`, []string{"checkout", "setup", "build", "notify"}},
+		{`$.jobs[?@property == 'check'][?@property == 'id' && @parentProperty == 'check']`, []string{"check"}},
+		{`$.jobs[?@property == 'check'].steps[?@path == "$['jobs']['check']['steps'][1]"]`, []string{"setup"}},
 	}
 
 	var node yaml.Node
@@ -280,7 +286,11 @@ jobs:
 			}
 			var ids []string
 			for _, r := range path.Query(&node) {
-				ids = append(ids, mappingValue(r, "id"))
+				id := r.Value
+				if r.Kind == yaml.MappingNode {
+					id = mappingValue(r, "id")
+				}
+				ids = append(ids, id)
 			}
 			assert.Equal(t, tt.expected, ids, "%s %s", name, tt.path)
 		}

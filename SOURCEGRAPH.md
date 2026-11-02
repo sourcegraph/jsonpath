@@ -60,3 +60,13 @@ Selectors record the current node's `@property`, `@path`, `@parent`, `@parentPro
 - Code: `relQuery.Query` and `absQuery.Query` (`pkg/jsonpath/yaml_query.go`); `filterContextState`, `filterContext.saveState` and `filterContext.restoreState` (`pkg/jsonpath/filter_context.go`).
 - Tests: `TestFilterContextIsolation` (`pkg/jsonpath/jsonpath_plus_test.go`, run under the default and Sourcegraph options).
 - Upstream: not proposed. Still present in v0.8.5.
+
+### `@parentProperty` and `@path` after a wildcard, union or filter
+
+Upstream evaluates a query one segment at a time over the whole nodelist, but a filter read its parent's name from shared state, which by then held the last child key of the previous filter. With `jobs: {build: {steps: [a, b]}, test: {steps: [c]}}`, `$.jobs.*.steps[?@parentProperty == 'steps']` returned only `a` and `b`. Likewise, a filter's matches did not record their path segment, so `$.jobs[?@property == 'check'].steps[?@path == "$['jobs']['check']['steps'][1]"]` built the path without `['check']` and matched nothing.
+
+- A filter now takes `@parentProperty` from the filtered node's own key, which name, wildcard and filter selectors already record (the index behind `~`), or from the pending array index left by an index, wildcard, slice or filter selector. Filter matches record a pending path segment, as wildcard results do.
+- Queries without filters do no extra work; `BenchmarkLazyContextTrackingStress` allocations are unchanged in eager and lazy modes.
+- Code: the `selectorSubKindFilter` and `selectorSubKindArrayIndex` cases of `selector.Query` (`pkg/jsonpath/yaml_query.go`).
+- Tests: the nodelist cases in `TestFilterContextIsolation` (`pkg/jsonpath/jsonpath_plus_test.go`, run under the default and Sourcegraph options).
+- Upstream: not proposed. Present in v0.8.5 by code inspection.

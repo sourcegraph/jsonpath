@@ -467,6 +467,7 @@ func (s selector) Query(idx index, value *yaml.Node, root *yaml.Node) []*yaml.No
             } else {
                 fc.PushPathSegment(thisSegment)
             }
+            fc.SetPendingPropertyName(child, strconv.Itoa(actualIndex))
         }
         return []*yaml.Node{child}
     case selectorSubKindWildcard:
@@ -563,15 +564,19 @@ func (s selector) Query(idx index, value *yaml.Node, root *yaml.Node) []*yaml.No
         return result
     case selectorSubKindFilter:
         var result []*yaml.Node
-        var parentPropName string
+        var parentPropName, pendingSeg string
         var pushedPendingSegment bool
         if hasFc {
+            // @parentProperty is the name of the node being filtered: an array index
+            // left by the segment that selected it, else its key in the parent mapping.
             if pendingPropName := fc.GetAndClearPendingPropertyName(value); pendingPropName != "" {
                 parentPropName = pendingPropName
+            } else if key := idx.getPropertyKey(value); key != nil {
+                parentPropName = key.Value
             } else {
                 parentPropName = fc.PropertyName()
             }
-            if pendingSeg := fc.GetAndClearPendingPathSegment(value); pendingSeg != "" {
+            if pendingSeg = fc.GetAndClearPendingPathSegment(value); pendingSeg != "" {
                 fc.PushPathSegment(pendingSeg)
                 pushedPendingSegment = true
             }
@@ -597,6 +602,10 @@ func (s selector) Query(idx index, value *yaml.Node, root *yaml.Node) []*yaml.No
 
                 if s.filter.Matches(idx, valueNode, root) {
                     result = append(result, valueNode)
+                    if hasFc {
+                        // Like wildcard results, a match carries its path to the next segment.
+                        fc.SetPendingPathSegment(valueNode, pendingSeg+normalizePathSegment(keyNode.Value))
+                    }
                 }
 
                 if hasFc {
@@ -619,6 +628,10 @@ func (s selector) Query(idx index, value *yaml.Node, root *yaml.Node) []*yaml.No
 
                 if s.filter.Matches(idx, child, root) {
                     result = append(result, child)
+                    if hasFc {
+                        fc.SetPendingPathSegment(child, pendingSeg+normalizeIndexSegment(i))
+                        fc.SetPendingPropertyName(child, strconv.Itoa(i))
+                    }
                 }
 
                 if hasFc {
