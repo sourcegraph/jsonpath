@@ -41,3 +41,12 @@ Upstream parsed everything after `!` as one `||` expression, so `!search(@.uses,
 - Code: the `token.NOT` case of `parseBasicExpr` (`pkg/jsonpath/parser.go`).
 - Tests: `TestLogicalNotPrecedence` and the negation cases in `TestParser` (`pkg/jsonpath/parser_test.go`). The compliance suite has no case that combines `!` with `&&` or `||`.
 - Upstream: not proposed.
+
+### `search()` and `match()` are false for a missing or non-string value
+
+Upstream returned Nothing instead of false when the first argument selected no node, and `testExpr.Matches` treated any function result other than false or null as true. So `steps[?search(@.uses, '^actions/checkout@')]` also selected every step without `uses`, and `!search(...)` excluded them. RFC 9535 sections 2.4.6 and 2.4.7 say both functions return LogicalFalse unless both arguments are strings, including when the argument is Nothing.
+
+- A function used as a test expression now matches only when it returns true. Today only `match()`, `search()` and the type-selector functions can be used there; the parser rejects `length()`, `count()` and `value()`, and the type selectors already returned false for Nothing.
+- Code: `functionExpr.match`, `functionExpr.search` and `isStringArg` (`pkg/jsonpath/yaml_eval.go`); `testExpr.Matches` (`pkg/jsonpath/yaml_query.go`).
+- Tests: `TestSearchMatchMissingMember` (`pkg/jsonpath/yaml_query_test.go`, run under the default and Sourcegraph options).
+- Upstream: not proposed. Still present in v0.8.5.

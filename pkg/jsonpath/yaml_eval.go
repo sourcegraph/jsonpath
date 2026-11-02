@@ -213,14 +213,18 @@ func (e functionExpr) count(idx index, node *yaml.Node, root *yaml.Node) literal
     return literal{integer: &res}
 }
 
+// isStringArg reports whether a match()/search() argument is a string value.
+// RFC 9535 2.4.6/2.4.7: any other argument, including Nothing (a query that
+// selected no node, such as a missing member), makes the result LogicalFalse.
+func isStringArg(arg resolvedArgument) bool {
+    return arg.kind == functionArgTypeLiteral && arg.literal != nil && arg.literal.string != nil
+}
+
 func (e functionExpr) match(idx index, node *yaml.Node, root *yaml.Node) literal {
     arg1 := e.args[0].Eval(idx, node, root)
     arg2 := e.args[1].Eval(idx, node, root)
-    if arg1.kind != functionArgTypeLiteral || arg2.kind != functionArgTypeLiteral {
-        return literal{}
-    }
-    if arg1.literal.string == nil || arg2.literal.string == nil {
-        return literal{bool: &[]bool{false}[0]}
+    if !isStringArg(arg1) || !isStringArg(arg2) {
+        return literal{bool: &falseLit}
     }
     matched, _ := regexp.MatchString(fmt.Sprintf("^(%s)$", *arg2.literal.string), *arg1.literal.string)
     return literal{bool: &matched}
@@ -229,11 +233,8 @@ func (e functionExpr) match(idx index, node *yaml.Node, root *yaml.Node) literal
 func (e functionExpr) search(idx index, node *yaml.Node, root *yaml.Node) literal {
     arg1 := e.args[0].Eval(idx, node, root)
     arg2 := e.args[1].Eval(idx, node, root)
-    if arg1.kind != functionArgTypeLiteral || arg2.kind != functionArgTypeLiteral {
-        return literal{}
-    }
-    if arg1.literal.string == nil || arg2.literal.string == nil {
-        return literal{bool: &[]bool{false}[0]}
+    if !isStringArg(arg1) || !isStringArg(arg2) {
+        return literal{bool: &falseLit}
     }
     matched, _ := regexp.MatchString(*arg2.literal.string, *arg1.literal.string)
     return literal{bool: &matched}

@@ -125,6 +125,53 @@ store:
     }
 }
 
+// RFC 9535 2.4.6 and 2.4.7: match() and search() are LogicalFalse for Nothing
+// (a missing member) or a non-string, so their negation is true.
+func TestSearchMatchMissingMember(t *testing.T) {
+    var root yaml.Node
+    err := yaml.Unmarshal([]byte(`
+steps:
+  - id: checkout
+    uses: actions/checkout@v4
+  - id: setup
+    run: make setup
+  - id: build
+    uses: 42
+`), &root)
+    if err != nil {
+        t.Fatal(err)
+    }
+    tests := []struct {
+        path     string
+        expected []string
+    }{
+        {"$.steps[?search(@.uses, '^actions/checkout@')].id", []string{"checkout"}},
+        {"$.steps[?!search(@.uses, '^actions/checkout@')].id", []string{"setup", "build"}},
+        {"$.steps[?match(@.uses, 'actions/checkout@.*')].id", []string{"checkout"}},
+        {"$.steps[?!match(@.uses, 'actions/checkout@.*')].id", []string{"setup", "build"}},
+    }
+    configs := map[string][]config.Option{
+        "default": nil,
+        // The options Sourcegraph's jsonpath: search filter uses.
+        "sourcegraph": {config.WithPropertyNameExtension(), config.WithLazyContextTracking()},
+    }
+    for name, opts := range configs {
+        for _, tt := range tests {
+            path, err := NewPath(tt.path, opts...)
+            if err != nil {
+                t.Fatal(err)
+            }
+            var actual []string
+            for _, node := range path.Query(&root) {
+                actual = append(actual, node.Value)
+            }
+            if !reflect.DeepEqual(actual, tt.expected) {
+                t.Errorf("%s %s: expected %v, got %v", name, tt.path, tt.expected, actual)
+            }
+        }
+    }
+}
+
 func nodeToString(node *yaml.Node) string {
     var builder strings.Builder
     err := yaml.NewEncoder(&builder).Encode(node)

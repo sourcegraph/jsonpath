@@ -740,12 +740,9 @@ func (e testExpr) Matches(idx index, node *yaml.Node, root *yaml.Node) bool {
     if e.filterQuery != nil {
         result = len(e.filterQuery.Query(idx, node, root)) > 0
     } else if e.functionExpr != nil {
+        // Only LogicalTrue matches; any other result, including Nothing, does not.
         funcResult := e.functionExpr.Evaluate(idx, node, root)
-        if funcResult.bool != nil {
-            result = *funcResult.bool
-        } else if funcResult.null == nil {
-            result = true
-        }
+        result = funcResult.bool != nil && *funcResult.bool
     }
     if e.not {
         return !result
