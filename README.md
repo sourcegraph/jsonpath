@@ -1,6 +1,6 @@
 # pb33f jsonpath
 
-> **Sourcegraph fork.** The `sourcegraph` branch is based on pb33f/jsonpath v0.8.2 (the last release on `go.yaml.in/yaml/v4`) and is published as the module `github.com/sourcegraph/jsonpath`, so it can sit alongside upstream (which libopenapi depends on). It carries bug fixes and extensions for Sourcegraph's experimental `jsonpath:` search filter. `main` tracks upstream.
+> **Sourcegraph fork.** `main` is based on pb33f/jsonpath v0.8.2 (the last release on `go.yaml.in/yaml/v4`) and is published as the module `github.com/sourcegraph/jsonpath`, so it can sit alongside upstream (which libopenapi depends on). It carries bug fixes and extensions for Sourcegraph's experimental `jsonpath:` search filter, listed in [SOURCEGRAPH.md](SOURCEGRAPH.md).
 
 [![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=for-the-badge)](https://pkg.go.dev/github.com/pb33f/jsonpath?tab=doc)
 
