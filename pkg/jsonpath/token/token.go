@@ -206,6 +206,11 @@ const (
 
     // JSONPath Plus parent selector
     PARENT_SELECTOR // ^ - select parent of current node
+
+    // Sourcegraph extension: regex literal /re/ or /re/i, only valid after =~.
+    // Literal holds the Go regexp pattern with \/ unescaped and the i flag
+    // rewritten as a (?i) prefix.
+    REGEX
 )
 
 var SimpleTokens = [...]Token{
@@ -269,6 +274,8 @@ var tokens = [...]string{
 
     // JSONPath Plus parent selector
     PARENT_SELECTOR: "^",
+
+    REGEX: "REGEX",
 }
 
 // String returns the string representation of the token.
@@ -590,6 +597,8 @@ func (t *Tokenizer) Tokenize() Tokens {
             } else {
                 t.addToken(LT, 1, "")
             }
+        case ch == '/' && t.config.JSONPathPlusEnabled() && len(t.tokens) > 0 && t.tokens[len(t.tokens)-1].Token == MATCHES:
+            t.scanRegex()
         case ch == '"' || ch == '\'':
             t.scanString(rune(ch))
         case ch == '-' && isDigit(t.peek()):
@@ -688,6 +697,52 @@ illegal:
     t.addToken(ILLEGAL, len(t.input[start:]), literal.String())
     t.pos = len(t.input) - 1
     t.column = len(t.input) - 1
+}
+
+// scanRegex scans a Jayway-style regex literal /pattern/flags after =~.
+// \/ escapes a slash; every other escape is passed to the regexp engine
+// unchanged, so /\d+\.\d+/ needs no extra escaping. The only flag is i.
+func (t *Tokenizer) scanRegex() {
+    start := t.pos
+    var pattern strings.Builder
+    for i := start + 1; i < len(t.input); i++ {
+        switch t.input[i] {
+        case '\\':
+            if i+1 >= len(t.input) {
+                break
+            }
+            i++
+            if t.input[i] != '/' {
+                pattern.WriteByte('\\')
+            }
+            pattern.WriteByte(t.input[i])
+        case '/':
+            end := i + 1
+            for end < len(t.input) && (isLiteralChar(t.input[end]) || isDigit(t.input[end])) {
+                end++
+            }
+            literal := pattern.String()
+            switch flags := t.input[i+1 : end]; flags {
+            case "":
+            case "i":
+                literal = "(?i)" + literal
+            default:
+                t.addToken(ILLEGAL, end-start, "unsupported regex flags: "+flags)
+                t.pos = end - 1
+                t.column += end - 1 - start
+                return
+            }
+            t.addToken(REGEX, end-start, literal)
+            t.pos = end - 1
+            t.column += end - 1 - start
+            return
+        default:
+            pattern.WriteByte(t.input[i])
+        }
+    }
+    t.addToken(ILLEGAL, len(t.input)-start, "unterminated regex literal")
+    t.pos = len(t.input) - 1
+    t.column += len(t.input) - 1 - start
 }
 
 func (t *Tokenizer) scanNumber() {

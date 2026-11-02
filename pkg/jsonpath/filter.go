@@ -2,6 +2,7 @@ package jsonpath
 
 import (
     "go.yaml.in/yaml/v4"
+    "regexp"
     "strconv"
     "strings"
 )
@@ -456,10 +457,14 @@ func (c comparable) ToString() string {
 //	comparison-op       = "==" / "!=" /
 //	                      "<=" / ">=" /
 //	                      "<"  / ">"
+//
+// For the regexMatch operator (Sourcegraph extension: comparable =~ /re/),
+// regex is set and right is nil.
 type comparisonExpr struct {
     left  *comparable
     op    comparisonOperator
     right *comparable
+    regex *regexp.Regexp
 }
 
 func (e comparisonExpr) ToString() string {
@@ -468,7 +473,13 @@ func (e comparisonExpr) ToString() string {
     builder.WriteString(" ")
     builder.WriteString(e.op.ToString())
     builder.WriteString(" ")
-    builder.WriteString(e.right.ToString())
+    if e.regex != nil {
+        builder.WriteString("/")
+        builder.WriteString(strings.ReplaceAll(e.regex.String(), "/", "\\/"))
+        builder.WriteString("/")
+    } else {
+        builder.WriteString(e.right.ToString())
+    }
     return builder.String()
 }
 
@@ -508,6 +519,7 @@ const (
     lessThanEqualTo
     greaterThan
     greaterThanEqualTo
+    regexMatch
 )
 
 func (o comparisonOperator) ToString() string {
@@ -524,6 +536,8 @@ func (o comparisonOperator) ToString() string {
         return ">"
     case greaterThanEqualTo:
         return ">="
+    case regexMatch:
+        return "=~"
     }
     return ""
 }

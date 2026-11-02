@@ -1503,3 +1503,75 @@ paths:
 	}
 	// We just verify it doesn't panic
 }
+
+// TestRegexMatchOperator tests the Sourcegraph =~ /re/ extension (Jayway syntax).
+func TestRegexMatchOperator(t *testing.T) {
+	yamlData := `
+name: "v1"
+version: 1.25
+count: 10
+enabled: true
+dependencies:
+  "@workiva/frugal": "^1.0.0"
+  react: "^18.2.0"
+  "@types/node": "20.1.0"
+aliases: ["@workiva/x", "lodash", "workiva", "back\\slash"]
+jobs:
+  build:
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: script
+        run: make
+      - name: fork
+        uses: someone/actions/checkout@v1
+`
+	var node yaml.Node
+	assert.NoError(t, yaml.Unmarshal([]byte(yamlData), &node))
+
+	tests := []struct {
+		path     string
+		expected []string
+	}{
+		{`$.dependencies[?@property =~ /^@workiva/]`, []string{"^1.0.0"}},
+		{`$.aliases[?@ =~ /^@workiva/]`, []string{"@workiva/x"}},
+		// The customer's search(@, '^\\\d+[.]\\\d+') without the string-escaping layer.
+		{`$.dependencies[?@ =~ /^\d+[.]\d+/]`, []string{"20.1.0"}},
+		{`$.jobs.*.steps[?@.uses =~ /^actions\/checkout@/].name`, []string{"checkout"}},
+		{`$.jobs[?@.steps[?@.uses =~ /^someone\//]].steps[0].name`, []string{"checkout"}},
+		// Unanchored, like search().
+		{`$.aliases[?@ =~ /workiva/]`, []string{"@workiva/x", "workiva"}},
+		{`$.aliases[?@ =~ /LODASH/]`, nil},
+		{`$.aliases[?@ =~ /LODASH/i]`, []string{"lodash"}},
+		// \\ is an escaped backslash, so the following slash closes the literal.
+		{`$.aliases[?@ =~ /\\/]`, []string{`back\slash`}},
+		// Numbers, booleans, and containers never match, even when their text would.
+		{`$[?@ =~ /1|true/]`, []string{"v1"}},
+		// A missing member is false, so its negation is true.
+		{`$.jobs.build.steps[?@.uses =~ /./].name`, []string{"checkout", "fork"}},
+		{`$.jobs.build.steps[?!(@.uses =~ /^actions\//)].name`, []string{"script", "fork"}},
+		{`$.dependencies[?@property =~ /^@/ && @ =~ /^\^/]`, []string{"^1.0.0"}},
+		{`$.dependencies[?@property =~ /^react$/ || @ =~ /^20/]`, []string{"^18.2.0", "20.1.0"}},
+	}
+	configs := map[string][]config.Option{
+		"default": nil,
+		// The options Sourcegraph's jsonpath: search filter uses.
+		"sourcegraph": {config.WithPropertyNameExtension(), config.WithLazyContextTracking()},
+	}
+	for name, opts := range configs {
+		for _, tt := range tests {
+			t.Run(name+"/"+tt.path, func(t *testing.T) {
+				path, err := NewPath(tt.path, opts...)
+				assert.NoError(t, err)
+				var values []string
+				for _, r := range path.Query(&node) {
+					values = append(values, r.Value)
+				}
+				assert.Equal(t, tt.expected, values)
+			})
+		}
+	}
+
+	_, err := NewPath(`$.aliases[?@ =~ /workiva/]`, config.WithStrictRFC9535())
+	assert.Error(t, err, "=~ must be rejected in strict RFC 9535 mode")
+}

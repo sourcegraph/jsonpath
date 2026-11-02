@@ -5,6 +5,7 @@ import (
     "fmt"
     "github.com/sourcegraph/jsonpath/pkg/jsonpath/config"
     "github.com/sourcegraph/jsonpath/pkg/jsonpath/token"
+    "regexp"
     "strconv"
     "strings"
 )
@@ -433,6 +434,9 @@ func (p *JSONPath) parseBasicExpr() (*basicExpr, error) {
     if comparisonErr == nil {
         return &basicExpr{comparisonExpr: comparisonExpr}, nil
     }
+    if errors.As(comparisonErr, new(regexOperandError)) {
+        return nil, comparisonErr
+    }
     p.current = prevCurrent
     testExpr, testErr := p.parseTestExpr()
     if testErr == nil {
@@ -442,10 +446,28 @@ func (p *JSONPath) parseBasicExpr() (*basicExpr, error) {
     return nil, p.parseFailure(&p.tokens[p.current], fmt.Sprintf("could not parse query: expected either testExpr [err: %s] or comparisonExpr: [err: %s]", testErr.Error(), comparisonErr.Error()))
 }
 
+// regexOperandError reports a bad operand after =~. parseBasicExpr returns it
+// as is: retrying the expression as a test-expr would hide the message.
+type regexOperandError struct{ error }
+
 func (p *JSONPath) parseComparisonExpr() (*comparisonExpr, error) {
     left, err := p.parseComparable()
     if err != nil {
         return nil, err
+    }
+
+    // Sourcegraph extension (Jayway syntax): comparable =~ /re/
+    if p.config.JSONPathPlusEnabled() && p.next(token.MATCHES) {
+        p.current++
+        if !p.next(token.REGEX) {
+            return nil, regexOperandError{p.parseFailure(&p.tokens[p.current-1], "expected regex literal /.../ after =~")}
+        }
+        re, err := regexp.Compile(p.tokens[p.current].Literal)
+        if err != nil {
+            return nil, regexOperandError{p.parseFailure(&p.tokens[p.current], "invalid regex: "+err.Error())}
+        }
+        p.current++
+        return &comparisonExpr{left: left, op: regexMatch, regex: re}, nil
     }
 
     if !p.isComparisonOperator(p.tokens[p.current].Token) {

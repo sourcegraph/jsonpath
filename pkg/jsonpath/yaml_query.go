@@ -711,6 +711,10 @@ func (e basicExpr) Matches(idx index, node *yaml.Node, root *yaml.Node) bool {
 
 func (e comparisonExpr) Matches(idx index, node *yaml.Node, root *yaml.Node) bool {
     leftValue := e.left.Evaluate(idx, node, root)
+    if e.op == regexMatch {
+        // Like search(): unanchored, and false unless the left side is a string.
+        return leftValue.string != nil && e.regex.MatchString(*leftValue.string)
+    }
     rightValue := e.right.Evaluate(idx, node, root)
 
     switch e.op {

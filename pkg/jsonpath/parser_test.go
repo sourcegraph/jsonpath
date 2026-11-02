@@ -76,6 +76,39 @@ func TestParser(t *testing.T) {
             input:   "$.paths[?(true]",
             invalid: true,
         },
+        {
+            name:  "Regex match",
+            input: `$.jobs.*.steps[?@.uses =~ /^actions\/checkout@/]`,
+        },
+        {
+            name:  "Regex match combined",
+            input: `$[?@.c =~ /(?i)c/ || @property =~ /^a/ && !(@ =~ /b/)]`,
+        },
+        {
+            name:    "Regex match invalid regex",
+            input:   `$[?@ =~ /(/]`,
+            invalid: true,
+        },
+        {
+            name:    "Regex match unsupported flag",
+            input:   `$[?@ =~ /a/g]`,
+            invalid: true,
+        },
+        {
+            name:    "Regex match unterminated",
+            input:   `$[?@ =~ /a]`,
+            invalid: true,
+        },
+        {
+            name:    "Regex match with string operand",
+            input:   `$[?@ =~ 'a']`,
+            invalid: true,
+        },
+        {
+            name:    "Regex literal without =~",
+            input:   `$[?@ == /a/]`,
+            invalid: true,
+        },
     }
 
     for _, test := range tests {
@@ -189,3 +222,4 @@ func TestParserPropertyNameExtension(t *testing.T) {
         })
     }
 }
+

@@ -429,6 +429,19 @@ func TestTokenizer(t *testing.T) {
                 {Token: BRACKET_RIGHT, Line: 1, Column: 3, Literal: "", Len: 1},
             },
         },
+        {
+            name:  "regex literal with escaped slash and i flag",
+            input: `$[?@ =~ /a\/[\]]\\/i]`,
+            expected: []TokenInfo{
+                {Token: ROOT, Line: 1, Column: 0, Literal: "", Len: 1},
+                {Token: BRACKET_LEFT, Line: 1, Column: 1, Literal: "", Len: 1},
+                {Token: FILTER, Line: 1, Column: 2, Literal: "", Len: 1},
+                {Token: CURRENT, Line: 1, Column: 3, Literal: "", Len: 1},
+                {Token: MATCHES, Line: 1, Column: 5, Literal: "", Len: 2},
+                {Token: REGEX, Line: 1, Column: 8, Literal: `(?i)a/[\]]\\`, Len: 12},
+                {Token: BRACKET_RIGHT, Line: 1, Column: 20, Literal: "", Len: 1},
+            },
+        },
     }
 
     for _, test := range tests {
@@ -636,15 +649,15 @@ func TestTokenizer_categorize(t *testing.T) {
         {name: "filter negation", path: "$[?(!@.child)]"},
         {name: "filter negation of comparison (edge case)", path: "$[?(!@.child>1)]"},
         {name: "filter negation of bracket", path: "$[?(!(@.child))]"},
-        {name: "filter regular expression", path: "$[?(@.child=~/.*/)]", illegal: true},
-        {name: "filter regular expression with escaped /", path: `$[?(@.child=~/\/.*/)]`, illegal: true},
-        {name: "filter regular expression with escaped \\", path: `$[?(@.child=~/\\/)]`, illegal: true},
+        {name: "filter regular expression", path: "$[?(@.child=~/.*/)]"},
+        {name: "filter regular expression with escaped /", path: `$[?(@.child=~/\/.*/)]`},
+        {name: "filter regular expression with escaped \\", path: `$[?(@.child=~/\\/)]`},
         {name: "filter regular expression with missing leading /", path: `$[?(@.child=~.*/)]`, illegal: true},
         {name: "filter regular expression with missing trailing /", path: `$[?(@.child=~/.*)]`, illegal: true},
-        {name: "filter regular expression to match string literal", path: `$[?('x'=~/.*/)]`, illegal: true},
-        {name: "filter regular expression to match integer literal", path: `$[?(0=~/.*/)]`, illegal: true},
-        {name: "filter regular expression to match float literal", path: `$[?(.1=~/.*/)]`, illegal: true},
-        {name: "filter invalid regular expression", path: `$[?(@.child=~/(.*/)]`, illegal: true},
+        {name: "filter regular expression to match string literal", path: `$[?('x'=~/.*/)]`},
+        {name: "filter regular expression to match integer literal", path: `$[?(0=~/.*/)]`},
+        {name: "filter regular expression to match float literal", path: `$[?(.1=~/.*/)]`},
+        {name: "filter invalid regular expression", path: `$[?(@.child=~/(.*/)]`}, // tokenizes; the parser rejects the regex
         {name: "unescaped single quote in bracket child name", path: `$['single'quote']`, illegal: true},
         {name: "escaped single quote in bracket child name", path: `$['single\']quote']`, simple: true},
         {name: "escaped backslash in bracket child name", path: `$['\\']`, simple: true},
