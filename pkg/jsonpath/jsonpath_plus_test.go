@@ -233,6 +233,60 @@ methods:
 	}
 }
 
+// TestFilterContextIsolation checks that each node a filter tests sees its own
+// context variables, whatever the filter's other conditions evaluate.
+func TestFilterContextIsolation(t *testing.T) {
+	yamlData := `
+jobs:
+  check:
+    id: check
+    runs-on: ubuntu-latest
+    steps:
+      - id: checkout
+        uses: actions/checkout@v4
+      - id: setup
+        with: { file: package.json }
+      - id: build
+        run: make
+  report:
+    id: report
+    needs: check
+`
+	tests := []struct {
+		path     string
+		expected []string
+	}{
+		{`$.jobs[?@['runs-on'] && @property == 'check']`, []string{"check"}},
+		{`$.jobs[?@['runs-on'] && @property == 'runs-on']`, nil},
+		{`$.jobs[?@.steps[0].uses && @path == "$['jobs']['check']"]`, []string{"check"}},
+		{`$.jobs[?$.jobs.check['runs-on'] == 'ubuntu-latest' && @property == 'report']`, []string{"report"}},
+		{`$.jobs.check.steps[?@.with[?@ == 'package.json'] && @index == 1]`, []string{"setup"}},
+		{`$.jobs.check.steps[?@.with[?@ == 'package.json'] && @parentProperty == 'steps']`, []string{"setup"}},
+		{`$.jobs.check.steps[?@.with[?@ == 'package.json'] && length(@parent) == 3]`, []string{"setup"}},
+	}
+
+	var node yaml.Node
+	assert.NoError(t, yaml.Unmarshal([]byte(yamlData), &node))
+	configs := map[string][]config.Option{
+		"default": nil,
+		// The options Sourcegraph's jsonpath: search filter uses.
+		"sourcegraph": {config.WithPropertyNameExtension(), config.WithLazyContextTracking()},
+	}
+	for name, opts := range configs {
+		for _, tt := range tests {
+			path, err := NewPath(tt.path, opts...)
+			if !assert.NoError(t, err, tt.path) {
+				continue
+			}
+			var ids []string
+			for _, r := range path.Query(&node) {
+				ids = append(ids, mappingValue(r, "id"))
+			}
+			assert.Equal(t, tt.expected, ids, "%s %s", name, tt.path)
+		}
+	}
+}
+
 // TestIndexContextVariable tests @index in array context
 func TestIndexContextVariable(t *testing.T) {
 	tests := []struct {

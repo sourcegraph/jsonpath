@@ -50,3 +50,13 @@ Upstream returned Nothing instead of false when the first argument selected no n
 - Code: `functionExpr.match`, `functionExpr.search` and `isStringArg` (`pkg/jsonpath/yaml_eval.go`); `testExpr.Matches` (`pkg/jsonpath/yaml_query.go`).
 - Tests: `TestSearchMatchMissingMember` (`pkg/jsonpath/yaml_query_test.go`, run under the default and Sourcegraph options).
 - Upstream: not proposed. Still present in v0.8.5.
+
+### Queries inside a filter no longer change its context variables
+
+Selectors record the current node's `@property`, `@path`, `@parent`, `@parentProperty` and `@index` in one shared filter context as they descend. A relative query, a singular absolute query in a comparison, or a nested filter in one condition therefore overwrote what later conditions saw: `$.jobs[?@['runs-on'] && @property == 'check']` matched nothing, while `... && @property == 'runs-on'` matched. Relative and absolute queries now save that state and restore it when they return.
+
+- Absolute queries used as existence tests (`?$.x`) were not affected; they already run with a fresh context.
+- The restore copies a small struct and truncates the path slice; it does not allocate.
+- Code: `relQuery.Query` and `absQuery.Query` (`pkg/jsonpath/yaml_query.go`); `filterContextState`, `filterContext.saveState` and `filterContext.restoreState` (`pkg/jsonpath/filter_context.go`).
+- Tests: `TestFilterContextIsolation` (`pkg/jsonpath/jsonpath_plus_test.go`, run under the default and Sourcegraph options).
+- Upstream: not proposed. Still present in v0.8.5.

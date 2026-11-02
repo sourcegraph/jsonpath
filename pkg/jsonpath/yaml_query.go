@@ -760,7 +760,13 @@ func (q filterQuery) Query(idx index, node *yaml.Node, root *yaml.Node) []*yaml.
     return nil
 }
 
+// relQuery and absQuery only run inside filter expressions. Their segments update
+// the filter context as they descend, so restore it afterwards: otherwise the
+// other conditions of the filter would see the nested query's @property, @path, etc.
 func (q relQuery) Query(idx index, node *yaml.Node, root *yaml.Node) []*yaml.Node {
+    if fc, ok := idx.(*filterContext); ok {
+        defer fc.restoreState(fc.saveState())
+    }
     result := []*yaml.Node{node}
     for _, seg := range q.segments {
         var newResult []*yaml.Node
@@ -773,6 +779,9 @@ func (q relQuery) Query(idx index, node *yaml.Node, root *yaml.Node) []*yaml.Nod
 }
 
 func (q absQuery) Query(idx index, node *yaml.Node, root *yaml.Node) []*yaml.Node {
+    if fc, ok := idx.(*filterContext); ok {
+        defer fc.restoreState(fc.saveState())
+    }
     result := []*yaml.Node{root}
     for _, seg := range q.segments {
         var newResult []*yaml.Node

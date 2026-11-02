@@ -334,6 +334,36 @@ func (fc *filterContext) Clone() FilterContext {
 	}
 }
 
+// filterContextState is the part of a filterContext that describes the node a
+// filter is currently testing (@property, @parent, @parentProperty, @index, @path).
+type filterContextState struct {
+	propertyName       string
+	parent             *yaml.Node
+	parentPropertyName string
+	arrayIndex         int
+	pathLen            int
+}
+
+func (fc *filterContext) saveState() filterContextState {
+	return filterContextState{
+		propertyName:       fc.propertyName,
+		parent:             fc.parent,
+		parentPropertyName: fc.parentPropertyName,
+		arrayIndex:         fc.arrayIndex,
+		pathLen:            len(fc.pathSegments),
+	}
+}
+
+// restoreState undoes the context changes made by a query nested in a filter
+// expression. Nested queries only push path segments, so truncating restores the path.
+func (fc *filterContext) restoreState(s filterContextState) {
+	fc.propertyName = s.propertyName
+	fc.parent = s.parent
+	fc.parentPropertyName = s.parentPropertyName
+	fc.arrayIndex = s.arrayIndex
+	fc.pathSegments = fc.pathSegments[:s.pathLen]
+}
+
 // Helper function to create a normalized path segment for a property name
 func normalizePathSegment(name string) string {
 	return "['" + escapePathSegment(name) + "']"
