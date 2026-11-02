@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - sourcegraph
   pull_request:
     branches:
       - main
+      - sourcegraph
 
 jobs:
   build-linux:

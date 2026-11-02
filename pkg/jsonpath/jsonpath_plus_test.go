@@ -3,7 +3,7 @@ package jsonpath
 import (
 	"testing"
 
-	"github.com/pb33f/jsonpath/pkg/jsonpath/config"
+	"github.com/sourcegraph/jsonpath/pkg/jsonpath/config"
 	"github.com/stretchr/testify/assert"
 	"go.yaml.in/yaml/v4"
 )

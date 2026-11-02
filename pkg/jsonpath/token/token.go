@@ -2,7 +2,7 @@ package token
 
 import (
     "fmt"
-    "github.com/pb33f/jsonpath/pkg/jsonpath/config"
+    "github.com/sourcegraph/jsonpath/pkg/jsonpath/config"
     "strconv"
     "strings"
 )

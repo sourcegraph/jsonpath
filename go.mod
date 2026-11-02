@@ -1,4 +1,4 @@
-module github.com/pb33f/jsonpath
+module github.com/sourcegraph/jsonpath
 
 go 1.24
 

@@ -3,8 +3,8 @@ package jsonpath
 import (
 	"testing"
 
-	"github.com/pb33f/jsonpath/pkg/jsonpath/config"
-	"github.com/pb33f/jsonpath/pkg/jsonpath/token"
+	"github.com/sourcegraph/jsonpath/pkg/jsonpath/config"
+	"github.com/sourcegraph/jsonpath/pkg/jsonpath/token"
 )
 
 func TestParseTestExprPropagatesLazyContextTrackingToNestedJSONPathQuery(t *testing.T) {
