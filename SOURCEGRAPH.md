@@ -31,6 +31,16 @@ This file lists every way `main` differs from upstream v0.8.2. Merging from upst
 - Tests: `TestRegexMatchOperator` (`pkg/jsonpath/jsonpath_plus_test.go`, run under the default and Sourcegraph options), regex cases in `TestParser` and `TestTokenizer`. Upstream's `TestTokenizer_categorize` cases that expected `=~ /.../` to be illegal now expect it to tokenize.
 - Upstream: not proposed.
 
+### Key substrings for finding candidate documents
+
+`(*JSONPath).RequiredKeySubstrings()` returns clauses that every document the path selects a node from meets: some key of the document contains one of each clause's strings. Sourcegraph's `jsonpath:` filter searches its index for files that contain them before it reads and parses each file. The analysis lives here, next to the evaluator, because whether a condition implies a key depends on evaluation details.
+
+- Clauses come from the member names on the path, `@property == 'name'`, the longest case-sensitive literal of `@property =~ /re/`, `search(@property, 're')` and `match(@property, 're')`, and the member names of queries that must select a node: tests such as `@.a`, comparisons with a literal (`==`, `<`, `<=`, `>`, `>=`), `@.a =~ /re/`, and the first argument of `search()` and `match()`. `&&` adds clauses; `||` and bracket unions merge the first clause of each alternative into one.
+- No clauses come from negations, `!=` (true when the member is missing), comparisons of two queries (true when both are missing), `count()`, `length()` and `value()`, or case-insensitive literals. `@property` is an array element's index, so names made only of digits give none either.
+- Code: `pkg/jsonpath/required_keys.go`.
+- Tests: `TestRequiredKeySubstrings`, and `TestRequiredKeySubstringsHoldWhereSelected`, which checks each clause against the keys of documents the path selects from, under the default and Sourcegraph options (`pkg/jsonpath/required_keys_test.go`).
+- Upstream: not proposed.
+
 ## Bug fixes
 
 ### A leading `!` binds only to the next basic expression
