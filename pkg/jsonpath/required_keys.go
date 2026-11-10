@@ -15,26 +15,30 @@ import (
 // the longest literal of @property =~ /re/ or search(@property, 're'), and
 // member names in queries that must select a node, such as @.a in a test,
 // in @.a == 1 or in search(@.a, 're'). Conditions that can be true without
-// such a key give no clause, such as negations, @.a != 1, @.a == @.b, names
-// of array indexes like @property == '0', and case-insensitive regexes.
-func (p *JSONPath) RequiredKeySubstrings() [][]string {
-	return segmentsRequiredKeys(p.ast.segments)
+// such a key give no clause, such as negations, @.a != 1, @.a == @.b, and
+// names of array indexes like @property == '0'.
+//
+// When ignoreCase is true, keys contain the strings ignoring case, the way a
+// regexp with (?i) matches them, and literals of case-insensitive regexes
+// such as /sdk/i also give clauses. Otherwise keys contain them exactly.
+func (p *JSONPath) RequiredKeySubstrings(ignoreCase bool) [][]string {
+	return segmentsRequiredKeys(p.ast.segments, ignoreCase)
 }
 
-func segmentsRequiredKeys(segments []*segment) [][]string {
+func segmentsRequiredKeys(segments []*segment, ignoreCase bool) [][]string {
 	var clauses [][]string
 	for _, seg := range segments {
 		switch seg.kind {
 		case segmentKindChild:
-			clauses = append(clauses, seg.child.requiredKeys()...)
+			clauses = append(clauses, seg.child.requiredKeys(ignoreCase)...)
 		case segmentKindDescendant:
-			clauses = append(clauses, seg.descendant.requiredKeys()...)
+			clauses = append(clauses, seg.descendant.requiredKeys(ignoreCase)...)
 		}
 	}
 	return clauses
 }
 
-func (s *innerSegment) requiredKeys() [][]string {
+func (s *innerSegment) requiredKeys(ignoreCase bool) [][]string {
 	switch s.kind {
 	case segmentDotMemberName:
 		return [][]string{{s.dotName}}
@@ -42,44 +46,44 @@ func (s *innerSegment) requiredKeys() [][]string {
 		// A bracket selects the nodes that any of its selectors select.
 		alternatives := make([][][]string, len(s.selectors))
 		for i, sel := range s.selectors {
-			alternatives[i] = sel.requiredKeys()
+			alternatives[i] = sel.requiredKeys(ignoreCase)
 		}
 		return anyOfRequiredKeys(alternatives)
 	}
 	return nil
 }
 
-func (s *selector) requiredKeys() [][]string {
+func (s *selector) requiredKeys(ignoreCase bool) [][]string {
 	switch s.kind {
 	case selectorSubKindName:
 		return [][]string{{s.name}}
 	case selectorSubKindFilter:
-		return s.filter.expression.requiredKeys()
+		return s.filter.expression.requiredKeys(ignoreCase)
 	}
 	return nil
 }
 
-func (e *logicalOrExpr) requiredKeys() [][]string {
+func (e *logicalOrExpr) requiredKeys(ignoreCase bool) [][]string {
 	alternatives := make([][][]string, len(e.expressions))
 	for i, and := range e.expressions {
 		for _, basic := range and.expressions {
-			alternatives[i] = append(alternatives[i], basic.requiredKeys()...)
+			alternatives[i] = append(alternatives[i], basic.requiredKeys(ignoreCase)...)
 		}
 	}
 	return anyOfRequiredKeys(alternatives)
 }
 
-func (e *basicExpr) requiredKeys() [][]string {
+func (e *basicExpr) requiredKeys(ignoreCase bool) [][]string {
 	switch {
 	case e.parenExpr != nil && !e.parenExpr.not:
-		return e.parenExpr.expr.requiredKeys()
+		return e.parenExpr.expr.requiredKeys(ignoreCase)
 	case e.comparisonExpr != nil:
-		return e.comparisonExpr.requiredKeys()
+		return e.comparisonExpr.requiredKeys(ignoreCase)
 	case e.testExpr != nil && !e.testExpr.not:
 		if e.testExpr.filterQuery != nil {
-			return e.testExpr.filterQuery.requiredKeys()
+			return e.testExpr.filterQuery.requiredKeys(ignoreCase)
 		}
-		return e.testExpr.functionExpr.requiredKeys()
+		return e.testExpr.functionExpr.requiredKeys(ignoreCase)
 	}
 	return nil
 }
@@ -87,13 +91,13 @@ func (e *basicExpr) requiredKeys() [][]string {
 // requiredKeys of a comparison. Only == against a literal and the ordering
 // operators are false when a query selects no node; == is true when both
 // sides select none, and != when one does.
-func (e *comparisonExpr) requiredKeys() [][]string {
+func (e *comparisonExpr) requiredKeys(ignoreCase bool) [][]string {
 	switch e.op {
 	case regexMatch:
 		if e.left.isProperty() {
-			return propertyRegexKeys(e.regex.String())
+			return propertyRegexKeys(e.regex.String(), ignoreCase)
 		}
-		return e.left.requiredKeys()
+		return e.left.requiredKeys(ignoreCase)
 	case equalTo, lessThan, lessThanEqualTo, greaterThan, greaterThanEqualTo:
 		if e.op == equalTo && e.left.isProperty() && e.right.literal != nil && e.right.literal.string != nil {
 			return propertyNameKeys(*e.right.literal.string)
@@ -102,10 +106,10 @@ func (e *comparisonExpr) requiredKeys() [][]string {
 			return propertyNameKeys(*e.left.literal.string)
 		}
 		if e.right.literal != nil {
-			return e.left.requiredKeys()
+			return e.left.requiredKeys(ignoreCase)
 		}
 		if e.left.literal != nil {
-			return e.right.requiredKeys()
+			return e.right.requiredKeys(ignoreCase)
 		}
 	}
 	return nil
@@ -115,37 +119,37 @@ func (c *comparable) isProperty() bool {
 	return c.contextVar != nil && c.contextVar.kind == contextVarProperty
 }
 
-func (c *comparable) requiredKeys() [][]string {
+func (c *comparable) requiredKeys(ignoreCase bool) [][]string {
 	switch {
 	case c.singularQuery == nil:
 		return nil
 	case c.singularQuery.relQuery != nil:
-		return segmentsRequiredKeys(c.singularQuery.relQuery.segments)
+		return segmentsRequiredKeys(c.singularQuery.relQuery.segments, ignoreCase)
 	case c.singularQuery.absQuery != nil:
-		return segmentsRequiredKeys(c.singularQuery.absQuery.segments)
+		return segmentsRequiredKeys(c.singularQuery.absQuery.segments, ignoreCase)
 	}
 	return nil
 }
 
-func (q *filterQuery) requiredKeys() [][]string {
+func (q *filterQuery) requiredKeys(ignoreCase bool) [][]string {
 	if q.relQuery != nil {
-		return segmentsRequiredKeys(q.relQuery.segments)
+		return segmentsRequiredKeys(q.relQuery.segments, ignoreCase)
 	}
-	return segmentsRequiredKeys(q.jsonPathQuery.segments)
+	return segmentsRequiredKeys(q.jsonPathQuery.segments, ignoreCase)
 }
 
 // requiredKeys of search() and match(), which are false unless their first
 // argument is a string.
-func (e *functionExpr) requiredKeys() [][]string {
+func (e *functionExpr) requiredKeys(ignoreCase bool) [][]string {
 	if (e.funcType != functionTypeSearch && e.funcType != functionTypeMatch) || len(e.args) != 2 {
 		return nil
 	}
 	query, re := e.args[0], e.args[1]
 	if query.contextVar != nil && query.contextVar.kind == contextVarProperty && re.literal != nil && re.literal.string != nil {
-		return propertyRegexKeys(*re.literal.string)
+		return propertyRegexKeys(*re.literal.string, ignoreCase)
 	}
 	if query.filterQuery != nil {
-		return query.filterQuery.requiredKeys()
+		return query.filterQuery.requiredKeys(ignoreCase)
 	}
 	return nil
 }
@@ -160,32 +164,37 @@ func propertyNameKeys(name string) [][]string {
 	return [][]string{{name}}
 }
 
-// propertyRegexKeys returns a clause for the longest case-sensitive literal
-// that every string matching expr contains.
-func propertyRegexKeys(expr string) [][]string {
+// propertyRegexKeys returns a clause for the longest literal that every
+// string matching expr contains. Literals that ignore case, as in /sdk/i,
+// count only when ignoreCase is true.
+func propertyRegexKeys(expr string, ignoreCase bool) [][]string {
 	re, err := syntax.Parse(expr, syntax.Perl)
 	if err != nil {
 		return nil
 	}
-	return propertyNameKeys(requiredLiteral(re.Simplify()))
+	return propertyNameKeys(requiredLiteral(re.Simplify(), ignoreCase))
 }
 
-func requiredLiteral(re *syntax.Regexp) string {
+func requiredLiteral(re *syntax.Regexp, ignoreCase bool) string {
 	switch re.Op {
 	case syntax.OpLiteral:
 		if re.Flags&syntax.FoldCase == 0 {
 			return string(re.Rune)
 		}
+		if ignoreCase {
+			// The parser stores case-insensitive literals in upper case.
+			return strings.ToLower(string(re.Rune))
+		}
 	case syntax.OpCapture, syntax.OpPlus:
-		return requiredLiteral(re.Sub[0])
+		return requiredLiteral(re.Sub[0], ignoreCase)
 	case syntax.OpRepeat:
 		if re.Min >= 1 {
-			return requiredLiteral(re.Sub[0])
+			return requiredLiteral(re.Sub[0], ignoreCase)
 		}
 	case syntax.OpConcat:
 		longest := ""
 		for _, sub := range re.Sub {
-			if lit := requiredLiteral(sub); len(lit) > len(longest) {
+			if lit := requiredLiteral(sub, ignoreCase); len(lit) > len(longest) {
 				longest = lit
 			}
 		}

@@ -61,7 +61,24 @@ func TestRequiredKeySubstrings(t *testing.T) {
 		path, err := NewPath(expr, config.WithPropertyNameExtension(), config.WithLazyContextTracking())
 		assert.NoError(t, err, expr)
 		var clauses []string
-		for _, clause := range path.RequiredKeySubstrings() {
+		for _, clause := range path.RequiredKeySubstrings(false) {
+			clauses = append(clauses, strings.Join(clause, "|"))
+		}
+		assert.Equal(t, want, strings.Join(clauses, ","), expr)
+	}
+
+	// Ignoring case adds the literals of case-insensitive regexes.
+	for expr, want := range map[string]string{
+		`$..[?@property =~ /react/i]`:            "react",
+		`$..with[?search(@property, '(?i)sdk')]`: "with,sdk",
+		`$..[?@property =~ /re(?i:act)/]`:        "act",
+		`$..[?@property =~ /^1/i]`:               "",
+		`$..[?@property == 'React']`:             "React",
+	} {
+		path, err := NewPath(expr, config.WithPropertyNameExtension(), config.WithLazyContextTracking())
+		assert.NoError(t, err, expr)
+		var clauses []string
+		for _, clause := range path.RequiredKeySubstrings(true) {
 			clauses = append(clauses, strings.Join(clause, "|"))
 		}
 		assert.Equal(t, want, strings.Join(clauses, ","), expr)
@@ -77,6 +94,7 @@ func TestRequiredKeySubstringsHoldWhereSelected(t *testing.T) {
 		`["react", "vue"]`,
 		"react: true\nvue: [x]\n",
 		"steps: [{run: make}]",
+		`{"SDK_Channel": "stable", "React": "18"}`,
 	}
 	exprs := []string{
 		`$..[?@property == 'react' || @property == 'vue']`,
@@ -88,6 +106,8 @@ func TestRequiredKeySubstringsHoldWhereSelected(t *testing.T) {
 		`$..steps[?!@.uses]`,
 		`$..steps[?@.uses != 'x']`,
 		`$..[?@ == 'react']`,
+		`$..[?@property =~ /sdk/i]`,
+		`$..[?search(@property, '(?i)^react$') || @property == 'vue']`,
 	}
 	configs := map[string][]config.Option{
 		"default":     nil,
@@ -104,12 +124,14 @@ func TestRequiredKeySubstringsHoldWhereSelected(t *testing.T) {
 					continue
 				}
 				keys := strings.Join(mappingKeys(&root), "\n")
-				for _, clause := range path.RequiredKeySubstrings() {
-					met := false
-					for _, s := range clause {
-						met = met || strings.Contains(keys, s)
+				for _, ignoreCase := range []bool{false, true} {
+					for _, clause := range path.RequiredKeySubstrings(ignoreCase) {
+						met := false
+						for _, s := range clause {
+							met = met || strings.Contains(keys, s) || ignoreCase && strings.Contains(strings.ToLower(keys), strings.ToLower(s))
+						}
+						assert.True(t, met, "%s/%s (ignoreCase %v): no key of %q contains one of %q", name, expr, ignoreCase, doc, clause)
 					}
-					assert.True(t, met, "%s/%s: no key of %q contains one of %q", name, expr, doc, clause)
 				}
 			}
 		}
