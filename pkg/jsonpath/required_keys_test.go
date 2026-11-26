@@ -37,6 +37,8 @@ func TestRequiredKeySubstrings(t *testing.T) {
 		`$..[?@.a && @.b || @property == 'c']`:               "a|c",
 		`$['a',?@.b]`:                                        "a|b",
 		`$..[?!!@.a]`:                                        "a",
+		`$..[?semver(@.version, '<2')]`:                      "version",
+		`$..[?semver(@.a, @.b)]`:                             "a,b",
 
 		// Conditions that can be true without the key.
 		`$..[?@property == 'react' || @ == 1]`: "",
@@ -56,6 +58,8 @@ func TestRequiredKeySubstrings(t *testing.T) {
 		`$..[?@property =~ /\d+/]`:             "",
 		`$.steps[?@property == '0']`:           "steps",
 		`$..[?@property =~ /^1/]`:              "",
+		`$..[?!semver(@.version, '<2')]`:       "",
+		`$..[?semver(@, '<2')]`:                "",
 	}
 	for expr, want := range tests {
 		path, err := NewPath(expr, config.WithPropertyNameExtension(), config.WithLazyContextTracking())
@@ -108,6 +112,8 @@ func TestRequiredKeySubstringsHoldWhereSelected(t *testing.T) {
 		`$..[?@ == 'react']`,
 		`$..[?@property =~ /sdk/i]`,
 		`$..[?search(@property, '(?i)^react$') || @property == 'vue']`,
+		`$..steps[?semver(@.uses, '>=4')]`,
+		`$..[?semver(@.react, '18.3.1')]`,
 	}
 	configs := map[string][]config.Option{
 		"default":     nil,

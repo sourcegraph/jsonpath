@@ -881,6 +881,9 @@ func isFunctionName(literal string) bool {
     // RFC 9535 standard functions
     case "length", "count", "match", "search", "value":
         return true
+    // Sourcegraph's version comparison extension
+    case "semver":
+        return true
     // JSONPath Plus type selector functions
     case "isNull", "isBoolean", "isNumber", "isString", "isArray", "isObject", "isInteger":
         return true

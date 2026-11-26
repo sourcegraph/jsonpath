@@ -164,6 +164,8 @@ const (
     functionTypeMatch
     functionTypeSearch
     functionTypeValue
+    // Sourcegraph extension, see SOURCEGRAPH.md
+    functionTypeSemver
     // JSONPath Plus type selector functions
     functionTypeIsNull
     functionTypeIsBoolean
@@ -180,6 +182,7 @@ var functionTypeMap = map[string]functionType{
     "match":  functionTypeMatch,
     "search": functionTypeSearch,
     "value":  functionTypeValue,
+    "semver": functionTypeSemver,
 }
 
 // typeSelectorFunctionMap maps JSONPath Plus type selector function names to their types.

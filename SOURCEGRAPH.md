@@ -41,6 +41,26 @@ This file lists every way `main` differs from upstream v0.8.2. Merging from upst
 - Tests: `TestRequiredKeySubstrings`, and `TestRequiredKeySubstringsHoldWhereSelected`, which checks each clause against the keys of documents the path selects from, with and without `ignoreCase`, under the default and Sourcegraph options (`pkg/jsonpath/required_keys_test.go`).
 - Upstream: not proposed.
 
+### Version comparison function `semver()`
+
+`semver(value, range)` in a filter is true when both arguments are versions or version ranges and some version is in both. Workiva asked for semver comparisons; versions in config files are often not strict semver, so the parser is loose and a value it can't read is false, not an error.
+
+- Ranges use npm's syntax: `1.2.3`, `=1.2.3`, `<`, `<=`, `>`, `>=`, `^`, `~`, wildcards (`1.x`, `1.2.*`, `*`), hyphen ranges (`1.2 - 1.4`), comparators separated by spaces or commas that all must hold (`>=1.2 <2`, `>=7.4,<8.0`), and alternatives separated by `||` or Composer's `|`.
+- Versions may start with `v`, have fewer than three parts, a prerelease (with or without a hyphen, as in `3.12.0b1`) and `+build` metadata, which is ignored. A version with fewer parts, such as `v4` or `18`, means every version that starts with it, as in npm, so `actions/checkout@v4` matches `<4.2` and `4.1.7` but not `<4`.
+- Before parsing, text up to the last `@` (`actions/checkout@v4`, `pnpm@9.15.0`, `npm:react@^18`), a pnpm lockfile peer suffix (`18.2.0(react@18.2.0)`), and the `npm:` and `workspace:` protocols are dropped.
+- Both arguments are parsed the same way, so the function is symmetric. With a range on one side and a version on the other, it tests whether the range accepts the version (Workiva's `accepts(18.3.1)`). With two ranges, it tests whether they overlap, so `semver(@, '<1.4.2')` selects a dependency that may resolve below 1.4.2, and `!semver(@, '<1.4.2')` one that can't (or that isn't a version).
+- Versions are totally ordered as in semver: a prerelease sorts before its release. Unlike npm, a range's comparators also match prereleases: `2.0.0-rc.1` matches `<2.0.0`. A partial upper bound excludes the prereleases of its first version, as npm desugars it: `2.0.0-rc.1` doesn't match `<2`.
+- Not versions, and therefore false: `catalog:`, `latest`, branch names, commit SHAs, URLs, paths, Docker tags such as `node:18-alpine`, four-part versions such as `1.2.3.4`, and Ruby's `~>`. A query argument must select one string or number; numbers are read as written, so YAML's `python-version: 3.10` is `3.10`. A missing member, booleans, objects and arrays are false.
+- A string literal argument that doesn't parse, or a non-string literal, is a parse error. Like `match()` and `search()`, the result can't be compared. `config.WithStrictRFC9535()` rejects it as an unknown function.
+- Code: `pkg/jsonpath/semver.go`; `functionTypeSemver` (`pkg/jsonpath/filter.go`); `isFunctionName` (`pkg/jsonpath/token/token.go`); the `functionTypeSemver` cases of `parseFunctionExpr` and `parseComparable` (`pkg/jsonpath/parser.go`); `functionExpr.semver` and `semverArg` (`pkg/jsonpath/yaml_eval.go`); `functionExpr.requiredKeys` gives the member names of both query arguments (`pkg/jsonpath/required_keys.go`).
+- Examples, for `dependencies: {react: "^17.0.2", left-pad: "github:foo/left-pad", lodash: "4.17.21"}` and `steps: [{uses: actions/checkout@v3}, {run: make}, {uses: actions/setup-node@v4}]`:
+  - `$.dependencies[?semver(@, '<18')]` returns `"^17.0.2"` and `"4.17.21"`.
+  - `$.dependencies[?!semver(@, '<18')]` returns `"github:foo/left-pad"`.
+  - `$.dependencies[?semver(@, '17.0.5')]` returns `"^17.0.2"`, the range that accepts 17.0.5.
+  - `$.steps[?semver(@.uses, '<4')].uses` returns `"actions/checkout@v3"`.
+- Tests: `TestSemver` (real-world values and ranges, as a literal and from the document), `TestSemverFilter` and `TestSemverParse` (`pkg/jsonpath/semver_test.go`, run under the default and Sourcegraph options); semver cases in `TestRequiredKeySubstrings` and `TestRequiredKeySubstringsHoldWhereSelected`.
+- Upstream: not proposed.
+
 ## Bug fixes
 
 ### A leading `!` binds only to the next basic expression

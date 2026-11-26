@@ -139,8 +139,18 @@ func (q *filterQuery) requiredKeys(ignoreCase bool) [][]string {
 }
 
 // requiredKeys of search() and match(), which are false unless their first
-// argument is a string.
+// argument is a string, and semver(), which is false unless both arguments
+// are.
 func (e *functionExpr) requiredKeys(ignoreCase bool) [][]string {
+	if e.funcType == functionTypeSemver {
+		var clauses [][]string
+		for _, arg := range e.args {
+			if arg.filterQuery != nil {
+				clauses = append(clauses, arg.filterQuery.requiredKeys(ignoreCase)...)
+			}
+		}
+		return clauses
+	}
 	if (e.funcType != functionTypeSearch && e.funcType != functionTypeMatch) || len(e.args) != 2 {
 		return nil
 	}
