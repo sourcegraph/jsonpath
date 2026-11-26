@@ -521,6 +521,8 @@ func (p *JSONPath) parseComparable() (*comparable, error) {
             return nil, p.parseFailure(&p.tokens[p.current], "match result cannot be compared")
         } else if funcExpr.funcType == functionTypeSearch {
             return nil, p.parseFailure(&p.tokens[p.current], "search result cannot be compared")
+        } else if funcExpr.funcType == functionTypeSemver {
+            return nil, p.parseFailure(&p.tokens[p.current], "semver result cannot be compared")
         }
         return &comparable{functionExpr: funcExpr}, nil
     }
@@ -693,6 +695,33 @@ func (p *JSONPath) parseFunctionExpr() (*functionExpr, error) {
             return nil, err
         }
         args = append(args, arg)
+    case functionTypeSemver:
+        if !p.config.JSONPathPlusEnabled() {
+            return nil, p.parseFailure(&p.tokens[p.current-2], "unknown function: "+functionName)
+        }
+        for i := 0; i < 2; i++ {
+            if i == 1 {
+                if p.tokens[p.current].Token != token.COMMA {
+                    return nil, p.parseFailure(&p.tokens[p.current], "expected ','")
+                }
+                p.current++
+            }
+            arg, err := p.parseFunctionArgument(false)
+            if err != nil {
+                return nil, err
+            }
+            // A version written in the expression must parse, unlike values
+            // in the document, which are false when they don't.
+            if arg.literal != nil {
+                if arg.literal.string == nil {
+                    return nil, p.parseFailure(&p.tokens[p.current-1], "semver arguments must be strings or queries")
+                }
+                if _, ok := parseVersionRange(*arg.literal.string); !ok {
+                    return nil, p.parseFailure(&p.tokens[p.current-1], "invalid version or range in semver: "+*arg.literal.string)
+                }
+            }
+            args = append(args, arg)
+        }
     default:
         return nil, p.parseFailure(&p.tokens[p.current], "unknown function: "+functionName)
     }

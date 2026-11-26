@@ -240,6 +240,40 @@ func (e functionExpr) search(idx index, node *yaml.Node, root *yaml.Node) litera
     return literal{bool: &matched}
 }
 
+// semver is true when both arguments are versions or ranges, as parsed by
+// parseVersionRange, and some version is in both. A value that is not a
+// version, such as catalog: or main, is false rather than an error.
+func (e functionExpr) semver(idx index, node *yaml.Node, root *yaml.Node) literal {
+    a, ok := e.semverArg(0, idx, node, root)
+    if !ok {
+        return literal{bool: &falseLit}
+    }
+    b, ok := e.semverArg(1, idx, node, root)
+    res := ok && a.overlaps(b)
+    return literal{bool: &res}
+}
+
+// semverArg parses argument i as a version range. A query must select one
+// string or number; numbers are read as written, so YAML's 3.10 is 3.10.
+func (e functionExpr) semverArg(i int, idx index, node *yaml.Node, root *yaml.Node) (versionRange, bool) {
+    if q := e.args[i].filterQuery; q != nil {
+        nodes := q.Query(idx, node, root)
+        if len(nodes) != 1 || nodes[0].Kind != yaml.ScalarNode {
+            return nil, false
+        }
+        switch nodes[0].Tag {
+        case "!!str", "!!int", "!!float":
+            return parseVersionRange(nodes[0].Value)
+        }
+        return nil, false
+    }
+    arg := e.args[i].Eval(idx, node, root)
+    if !isStringArg(arg) {
+        return nil, false
+    }
+    return parseVersionRange(*arg.literal.string)
+}
+
 func (e functionExpr) value(idx index, node *yaml.Node, root *yaml.Node) literal {
     //	2.4.8.  value() Function Extension
     //
@@ -299,6 +333,8 @@ func (e functionExpr) Evaluate(idx index, node *yaml.Node, root *yaml.Node) lite
         return e.search(idx, node, root)
     case functionTypeValue:
         return e.value(idx, node, root)
+    case functionTypeSemver:
+        return e.semver(idx, node, root)
     // JSONPath Plus type selector functions
     case functionTypeIsNull:
         return e.isNull(idx, node, root)
